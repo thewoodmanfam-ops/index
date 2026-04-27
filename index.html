@@ -22,30 +22,30 @@ const castle = {
   x: 50,
   y: canvas.height / 2 - 40,
   width: 60,
-  height: 80
+  height: 80,
+  maxHealth: 10,
+  health: 10
 };
 
 // Archer
 const archer = {
   x: castle.x + 60,
   y: castle.y + 40,
-  fireRate: 1000 / 3, // 3 arrows per second
+  fireRate: 1000 / 3,
   lastShot: 0
 };
 
-// Arrows
 let arrows = [];
-
-// Enemies
 let enemies = [];
 let wave = 1;
+let gameOver = false;
 
 // Spawn wave
 function spawnWave() {
   for (let i = 0; i < 10; i++) {
     enemies.push({
-      x: canvas.width + i * 50,
-      y: canvas.height / 2 + (Math.random() * 100 - 50),
+      x: canvas.width + Math.random() * 200,
+      y: Math.random() * canvas.height,
       speed: 1 + Math.random(),
       health: 1
     });
@@ -54,37 +54,81 @@ function spawnWave() {
 
 spawnWave();
 
-// Shoot arrows
+// Find nearest enemy
+function getNearestEnemy() {
+  if (enemies.length === 0) return null;
+
+  let nearest = enemies[0];
+  let minDist = Infinity;
+
+  enemies.forEach(e => {
+    let dx = e.x - archer.x;
+    let dy = e.y - archer.y;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = e;
+    }
+  });
+
+  return nearest;
+}
+
+// Shoot arrow toward target
 function shootArrow(time) {
   if (time - archer.lastShot > archer.fireRate) {
-    arrows.push({
-      x: archer.x,
-      y: archer.y,
-      speed: 6,
-      damage: 4
-    });
+    let target = getNearestEnemy();
+    if (target) {
+      let dx = target.x - archer.x;
+      let dy = target.y - archer.y;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+
+      arrows.push({
+        x: archer.x,
+        y: archer.y,
+        vx: (dx / dist) * 6,
+        vy: (dy / dist) * 6,
+        damage: 4
+      });
+    }
     archer.lastShot = time;
   }
 }
 
-// Update game
+// Update
 function update(time) {
+  if (gameOver) return;
+
   shootArrow(time);
 
-  // Move arrows
-  arrows.forEach(a => a.x += a.speed);
+  arrows.forEach(a => {
+    a.x += a.vx;
+    a.y += a.vy;
+  });
 
-  // Move enemies
-  enemies.forEach(e => e.x -= e.speed);
+  enemies.forEach(e => {
+    e.x -= e.speed;
 
-  // Collision
+    // Hit castle
+    if (e.x < castle.x + castle.width) {
+      castle.health -= 2;
+      e.health = 0;
+
+      if (castle.health <= 0) {
+        gameOver = true;
+      }
+    }
+  });
+
+  // Collisions
   arrows.forEach(a => {
     enemies.forEach(e => {
       if (
-        a.x > e.x &&
-        a.x < e.x + 10 &&
-        a.y > e.y &&
-        a.y < e.y + 20
+        a.x > e.x - 5 &&
+        a.x < e.x + 5 &&
+        a.y > e.y - 5 &&
+        a.y < e.y + 15
       ) {
         e.health -= a.damage;
         a.hit = true;
@@ -92,18 +136,32 @@ function update(time) {
     });
   });
 
-  // Remove dead enemies/arrows
-  enemies = enemies.filter(e => e.health > 0 && e.x > 0);
-  arrows = arrows.filter(a => !a.hit && a.x < canvas.width);
+  enemies = enemies.filter(e => e.health > 0);
+  arrows = arrows.filter(a => !a.hit && a.x < canvas.width && a.y > 0 && a.y < canvas.height);
 
   // Next wave
-  if (enemies.length === 0) {
+  if (enemies.length === 0 && !gameOver) {
     wave++;
     spawnWave();
   }
 }
 
-// Draw game
+// Draw health bar
+function drawHealthBar() {
+  let ratio = castle.health / castle.maxHealth;
+  let width = 200;
+
+  ctx.fillStyle = "red";
+  ctx.fillRect(20, 50, width, 20);
+
+  ctx.fillStyle = "green";
+  ctx.fillRect(20, 50, width * ratio, 20);
+
+  ctx.strokeStyle = "white";
+  ctx.strokeRect(20, 50, width, 20);
+}
+
+// Draw
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -118,30 +176,26 @@ function draw() {
   // Arrows
   ctx.fillStyle = "yellow";
   arrows.forEach(a => {
-    ctx.fillRect(a.x, a.y, 8, 2);
+    ctx.fillRect(a.x, a.y, 6, 2);
   });
 
   // Enemies (stickmen)
   ctx.strokeStyle = "white";
   enemies.forEach(e => {
-    // Head
     ctx.beginPath();
     ctx.arc(e.x, e.y, 5, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Body
     ctx.beginPath();
     ctx.moveTo(e.x, e.y + 5);
     ctx.lineTo(e.x, e.y + 15);
     ctx.stroke();
 
-    // Arms
     ctx.beginPath();
     ctx.moveTo(e.x - 5, e.y + 10);
     ctx.lineTo(e.x + 5, e.y + 10);
     ctx.stroke();
 
-    // Legs
     ctx.beginPath();
     ctx.moveTo(e.x, e.y + 15);
     ctx.lineTo(e.x - 5, e.y + 20);
@@ -150,13 +204,20 @@ function draw() {
     ctx.stroke();
   });
 
-  // Wave text
+  drawHealthBar();
+
   ctx.fillStyle = "white";
   ctx.font = "20px Arial";
   ctx.fillText("Wave: " + wave, 20, 30);
+
+  if (gameOver) {
+    ctx.fillStyle = "red";
+    ctx.font = "50px Arial";
+    ctx.fillText("GAME OVER", canvas.width / 2 - 150, canvas.height / 2);
+  }
 }
 
-// Game loop
+// Loop
 function loop(time) {
   update(time);
   draw();
